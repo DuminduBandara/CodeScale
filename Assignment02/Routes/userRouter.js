@@ -4,9 +4,10 @@ import User from "../Models/user.js";
 import nodeMailer from "nodemailer";
 import cron from "node-cron";
 import axios from "axios";
-import { DateTime } from "luxon";
+import moment from "moment-timezone";
 
-// Store user details
+
+//save new user
 router.post("/saveUser", async (req, res) => {
   try {
     const newUser = new User({
@@ -26,6 +27,7 @@ router.post("/saveUser", async (req, res) => {
   }
 });
 
+// update user location
 router.put("/updateUser/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -41,24 +43,25 @@ router.put("/updateUser/:userId", async (req, res) => {
   }
 });
 
-router.get("/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
-    }
-    const weatherData = await getWeather(user.location);
-    user.weatherData.push(weatherData);
-    await user.save();
-    res.json(user.weatherData);
-  } catch (error) {
-    res.status(500).json({ error: "Could not fetch weather data." });
-  }
-});
+// router.get("/:userId", async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: "User not found." });
+//     }
+//     const weatherData = await getWeather(user.location);
+//     user.weatherData.push(weatherData);
+//     await user.save();
+//     res.json(user.weatherData);
+//   } catch (error) {
+//     res.status(500).json({ error: "Could not fetch weather data." });
+//   }
+// });
 
 const API_KEY = "6b118f3c4f9a96fd5fc0e4555331566e";
 
+// retrieve weather data from openweather api
 async function getWeather(location) {
   try {
     const response = await axios.get(
@@ -70,7 +73,7 @@ async function getWeather(location) {
   }
 }
 
-// cron.schedule("* 3 * * *", mailManager)
+// schedule send emails to users with weather updates in every 3 hours
 cron.schedule("* * * * *", async () => {
   try {
     const users = await User.find({});
@@ -78,45 +81,49 @@ cron.schedule("* * * * *", async () => {
     if (Object.keys(users).length > 0) {
       for (const user of users) {
         const weatherData = await getWeather(user.location);
-        user.weatherData.push(weatherData);
+        const convertDate = moment(new Date()).utcOffset(weatherData.timezone / 60);
+        user.data.push({date: convertDate, weatherData:weatherData});
         await user.save();
   
-        // console.log(user);
-        console.log(user.location);
-        user.weatherData.forEach((u) => {
-          var t = u.main?.temp;
-          if (t !== undefined) {
-            console.log(t);
-          }
+        user.data.forEach((u) => {
+          console.log(u.date);
+          u.weatherData.forEach((wd) => {
+            var t = wd.main?.temp;
+            if (t !== undefined) {
+              console.log(t);
+            }
+          })
         });
   
         let tableRows = "";
   
-        user.weatherData.forEach((u) => {
-          let temp = u.main?.temp;
-          let weatherMain = u.weather && u.weather[0] ? u.weather[0].main : 'N/A';
-          let humidity = u.main?.humidity;
-          let windSpeed = u.wind?.speed;
-          tableRows += `
-            <tr>
-              <td>${temp !== undefined ? ((temp - 32.0) * 5/9).toFixed(2) : 'N/A'} &deg;C</td>
-              <td>${weatherMain || 'N/A'}</td>
-              <td>${humidity !== undefined ? `${humidity}%` : 'N/A'}</td>
-              <td>${windSpeed !== undefined ? `${windSpeed} MPH` : 'N/A'}</td>
-            </tr>`;
+        user.data.forEach((u) => {
+          u.weatherData.forEach((wd) => {
+            let temp = wd.main?.temp;
+            let weatherMain = wd.weather && wd.weather[0] ? wd.weather[0].main : 'N/A';
+            let humidity = wd.main?.humidity;
+            let windSpeed = wd.wind?.speed;
+            tableRows += `
+              <tr>
+                <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('YYYY-MM-DD') || 'N/A'}</td>
+                <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('HH:mm:ss') || 'N/A'}</td>
+                <td>${temp !== undefined ? ((temp - 32.0) * 5/9).toFixed(2) : 'N/A'} &deg;C</td>
+                <td>${weatherMain || 'N/A'}</td>
+                <td>${humidity !== undefined ? `${humidity}%` : 'N/A'}</td>
+                <td>${windSpeed !== undefined ? `${windSpeed} MPH` : 'N/A'}</td>
+              </tr>`;
+          })
         });
   
-        let setDateTime = DateTime.now()
-          .setZone("UTC")
-          .plus({ seconds: user.weatherData[0].timezone });
-        let localDateTime = setDateTime.toLocaleString(DateTime.DATETIME_FULL);
-  
+
+        // weather Report
         const table = `
-          <h1>Location: ${user.weatherData[0].name}</h1>
-          <h2>${localDateTime}</h2>
+          <h1>Location: ${user.data[0].weatherData[0].name}</h1>
           <hr>
           <table style="border-collapse: separate; border-spacing: 10px;">
             <tr>
+              <th>Date</th>
+              <th>Time</th>
               <th>Temperature (&deg;C)</th>
               <th>Description</th>
               <th>Humidity</th>
@@ -138,6 +145,8 @@ cron.schedule("* * * * *", async () => {
   }
 });
 
+
+// generate Email 
 async function mailManager(email, table) {
   const transporter = nodeMailer.createTransport({
     service: "gmail",
@@ -152,10 +161,9 @@ async function mailManager(email, table) {
 
   const info = await transporter.sendMail({
     from: "twodemo83@gmail.com",
-    // to: "one298591@gmail.com",
     to: email,
-    subject: "Daily Weather Report",
-    text: `The weather in your location is: Colombo`,
+    subject: "Updated Weather Report",
+    // text: `The weather in your location is: Colombo`,
     html: table,
   });
 
