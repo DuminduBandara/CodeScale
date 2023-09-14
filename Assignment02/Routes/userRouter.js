@@ -57,7 +57,6 @@ router.get("/:userId", async (req, res) => {
   }
 });
 
-
 const API_KEY = "6b118f3c4f9a96fd5fc0e4555331566e";
 
 async function getWeather(location) {
@@ -71,62 +70,73 @@ async function getWeather(location) {
   }
 }
 
-// cron.schedule("* * * * *", mailManager)
+// cron.schedule("* 3 * * *", mailManager)
 cron.schedule("* * * * *", async () => {
   try {
     const users = await User.find({});
 
-    for (const user of users) {
-      const weatherData = await getWeather(user.location);
-      user.weatherData.push(weatherData);
-      await user.save();
-
-      // console.log(user);
-      console.log(user.location);
-      user.weatherData.forEach(u => {
-        console.log(u.main.temp);
-      });
-
-      let tableRows = '';
-
-      user.weatherData.forEach(u => {
-        tableRows += `
-          <tr>
-            <td>${((u.main.temp - 32.0) * 5/9).toFixed(2)} &deg;C</td>
-            <td>${u.weather[0].main}</td>
-            <td>${u.main.humidity}%</td>
-            <td>${u.wind.speed} MPH</td>
-          </tr>`;
-      });
-
-      let setDateTime = DateTime.now().setZone('UTC').plus({ seconds:  user.weatherData[0].timezone})
-      let localDateTime = setDateTime.toLocaleString(DateTime.DATETIME_FULL)
-
-      const table = `
-        <h1>Location: ${user.weatherData[0].name}</h1>
-        <h2>${localDateTime}</h2>
-        <hr>
-        <table style="border-collapse: separate; border-spacing: 10px;">
-          <tr>
-            <th>Temperature (&deg;C)</th>
-            <th>Description</th>
-            <th>Humidity</th>
-            <th>Wind (MPH)</th>
-          </tr>         
-          ${tableRows}
-        </table>
-      `
-      
-      mailManager(user.email, table)
-      console.log("Successfully updated");
-
-
+    if (Object.keys(users).length > 0) {
+      for (const user of users) {
+        const weatherData = await getWeather(user.location);
+        user.weatherData.push(weatherData);
+        await user.save();
+  
+        // console.log(user);
+        console.log(user.location);
+        user.weatherData.forEach((u) => {
+          var t = u.main?.temp;
+          if (t !== undefined) {
+            console.log(t);
+          }
+        });
+  
+        let tableRows = "";
+  
+        user.weatherData.forEach((u) => {
+          let temp = u.main?.temp;
+          let weatherMain = u.weather && u.weather[0] ? u.weather[0].main : 'N/A';
+          let humidity = u.main?.humidity;
+          let windSpeed = u.wind?.speed;
+          tableRows += `
+            <tr>
+              <td>${temp !== undefined ? ((temp - 32.0) * 5/9).toFixed(2) : 'N/A'} &deg;C</td>
+              <td>${weatherMain || 'N/A'}</td>
+              <td>${humidity !== undefined ? `${humidity}%` : 'N/A'}</td>
+              <td>${windSpeed !== undefined ? `${windSpeed} MPH` : 'N/A'}</td>
+            </tr>`;
+        });
+  
+        let setDateTime = DateTime.now()
+          .setZone("UTC")
+          .plus({ seconds: user.weatherData[0].timezone });
+        let localDateTime = setDateTime.toLocaleString(DateTime.DATETIME_FULL);
+  
+        const table = `
+          <h1>Location: ${user.weatherData[0].name}</h1>
+          <h2>${localDateTime}</h2>
+          <hr>
+          <table style="border-collapse: separate; border-spacing: 10px;">
+            <tr>
+              <th>Temperature (&deg;C)</th>
+              <th>Description</th>
+              <th>Humidity</th>
+              <th>Wind (MPH)</th>
+            </tr>         
+            ${tableRows}
+          </table>
+        `;
+  
+        mailManager(user.email, table);
+        console.log("Successfully updated");
+      }
+    }else{
+      console.log("No users found");
     }
+
   } catch (err) {
     console.log(err);
   }
 });
-
 
 async function mailManager(email, table) {
   const transporter = nodeMailer.createTransport({
