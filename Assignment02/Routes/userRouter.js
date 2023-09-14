@@ -43,21 +43,6 @@ router.put("/updateUser/:userId", async (req, res) => {
   }
 });
 
-// router.get("/:userId", async (req, res) => {
-//   try {
-//     const { userId } = req.params;
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ error: "User not found." });
-//     }
-//     const weatherData = await getWeather(user.location);
-//     user.weatherData.push(weatherData);
-//     await user.save();
-//     res.json(user.weatherData);
-//   } catch (error) {
-//     res.status(500).json({ error: "Could not fetch weather data." });
-//   }
-// });
 
 const API_KEY = "6b118f3c4f9a96fd5fc0e4555331566e";
 
@@ -99,26 +84,28 @@ cron.schedule("* * * * *", async () => {
   
         user.data.forEach((u) => {
           u.weatherData.forEach((wd) => {
-            let temp = wd.main?.temp;
-            let weatherMain = wd.weather && wd.weather[0] ? wd.weather[0].main : 'N/A';
-            let humidity = wd.main?.humidity;
-            let windSpeed = wd.wind?.speed;
-            tableRows += `
-              <tr>
-                <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('YYYY-MM-DD') || 'N/A'}</td>
-                <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('HH:mm:ss') || 'N/A'}</td>
-                <td>${temp !== undefined ? ((temp - 32.0) * 5/9).toFixed(2) : 'N/A'} &deg;C</td>
-                <td>${weatherMain || 'N/A'}</td>
-                <td>${humidity !== undefined ? `${humidity}%` : 'N/A'}</td>
-                <td>${windSpeed !== undefined ? `${windSpeed} MPH` : 'N/A'}</td>
-              </tr>`;
+            if(wd.name.toLowerCase() === user.location.toLowerCase()) {
+              let temp = wd.main?.temp;
+              let weatherMain = wd.weather && wd.weather[0] ? wd.weather[0].main : 'N/A';
+              let humidity = wd.main?.humidity;
+              let windSpeed = wd.wind?.speed;
+              tableRows += `
+                <tr>
+                  <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('YYYY-MM-DD') || 'N/A'}</td>
+                  <td>${(moment(u.date).utcOffset(wd.timezone / 60)).format('HH:mm:ss') || 'N/A'}</td>
+                  <td>${temp !== undefined ? ((temp - 32.0) * 5/9).toFixed(2) : 'N/A'} &deg;C</td>
+                  <td>${weatherMain || 'N/A'}</td>
+                  <td>${humidity !== undefined ? `${humidity}%` : 'N/A'}</td>
+                  <td>${windSpeed !== undefined ? `${windSpeed} MPH` : 'N/A'}</td>
+                </tr>`;
+            }
           })
         });
   
 
         // weather Report
         const table = `
-          <h1>Location: ${user.data[0].weatherData[0].name}</h1>
+          <h1>Location: ${user.location}</h1>
           <hr>
           <table style="border-collapse: separate; border-spacing: 10px;">
             <tr>
